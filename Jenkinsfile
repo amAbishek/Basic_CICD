@@ -2,49 +2,71 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "myfirstcicd"
+        DOCKERHUB_USERNAME = "iamabi"
+        IMAGE_NAME = "demo_cicd"
+        IMAGE_TAG = "latest"
+        DOCKER_CREDENTIALS_ID = "dockerhub-creds"
     }
 
     stages {
 
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/amAbishek/Basic_CICD.git'
+                git branch: 'main',
+                    url: 'https://github.com/amAbishek/basic_cicd.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $IMAGE_NAME .'
+                sh '''
+                docker build -t $DOCKERHUB_USERNAME/$IMAGE_NAME:$IMAGE_TAG .
+                '''
             }
         }
 
         stage('Run Unit Tests') {
             steps {
                 sh '''
-                docker run --rm $IMAGE_NAME python -m unittest test_app.py
+                docker run --rm $DOCKERHUB_USERNAME/$IMAGE_NAME:$IMAGE_TAG \
+                python -m unittest test_app.py
                 '''
             }
         }
 
-        stage('Run Application') {
+        stage('Docker Login') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: DOCKER_CREDENTIALS_ID,
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    '''
+                }
+            }
+        }
+
+        stage('Push Image to Docker Hub') {
             steps {
                 sh '''
-                docker run --rm $IMAGE_NAME
+                docker push $DOCKERHUB_USERNAME/$IMAGE_NAME:$IMAGE_TAG
                 '''
             }
         }
     }
 
     post {
+        always {
+            sh 'docker logout'
+            sh 'docker system prune -f'
+        }
         success {
-            echo 'Pipeline executed successfully'
+            echo 'Docker image pushed successfully'
         }
         failure {
             echo 'Pipeline failed'
-        }
-        always {
-            sh 'docker system prune -f'
         }
     }
 }
